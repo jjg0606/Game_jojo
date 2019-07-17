@@ -484,7 +484,7 @@ PrefabInstance:
       objectReference: {fileID: 2116284150}
     - target: {fileID: 384022922, guid: f628c7ba35a87dd45b85cb8dc32c8c10, type: 3}
       propertyPath: skillRange
-      value: 15
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 384022922, guid: f628c7ba35a87dd45b85cb8dc32c8c10, type: 3}
       propertyPath: ProjectileVelocity_first

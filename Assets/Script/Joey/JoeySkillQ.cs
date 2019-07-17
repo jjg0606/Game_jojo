@@ -41,6 +41,7 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
     private  Transform          projectileTr;
 
     private GDele.vv FrameFunction; // Update 에서 수행 할 Function
+    private GDele.vv LateFrameFunction;
     #endregion
 
     #region MonoBehaviour
@@ -50,6 +51,7 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         // initial this
         masterTr = GetComponent<Transform>();
         FrameFunction = Nothing;
+        LateFrameFunction = Nothing;
         maincam = Camera.main;
         // instantiate prefab
         skillRangeObj = Instantiate<GameObject>(skillRangePrefab);
@@ -65,6 +67,12 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
     void Update()
     {
         FrameFunction();
+        GetDebug();
+    }
+
+    private void LateUpdate()
+    {
+        LateFrameFunction();
     }
 
     #endregion
@@ -105,6 +113,7 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
                 CancelSkill();
                 break;
             case Seq.beforeSecond:
+                ShotSecond();
                 //2번째 샷 발사
                 break;
             case Seq.secondShotFollowing:
@@ -137,6 +146,7 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
                 break;
             case Seq.beforeSecond:
                 //첫번째 샷 이후 두번째 샷 발사
+                ShotSecond();
                 break;
             case Seq.secondShotFollowing:
                 //입력과 무관
@@ -158,7 +168,12 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
     #endregion
 
     #region TempVariables
+    //at first shot
     private Vector3 shotDestination = Vector3.zero;
+    //at second shot
+    private Vector3 shotDirection = Vector3.zero;
+    //at second shot following
+    private float leftDistance = 0.0f;
     #endregion
 
     #region SkillFunction
@@ -172,7 +187,8 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         this.state = State.ActiveNow;
         this.sequence = Seq.beforeFirst;
         // frame function update
-        this.FrameFunction = SkillRangeFollow;
+        this.FrameFunction = Nothing;
+        this.LateFrameFunction = SkillRangeFollow;
         // function
         skillRangeObj.SetActive(true);
         skillRangeObj.transform.position = masterTr.position;
@@ -182,7 +198,8 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
     /// beforeFirst -> beforeSecond
     /// </summary>
     void ShotFirst()
-    {        
+    {
+        // check mouse position
         RaycastHit hitinfo;
         if (!Physics.Raycast(maincam.ScreenPointToRay(Input.mousePosition), out hitinfo, 200.0f, Constants.groundLayerMask))
         {
@@ -192,7 +209,6 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         // function
         projectileObj.SetActive(true);
         projectileTr.position = masterTr.position;
-
         Vector3 direction = hitinfo.point - masterTr.position;
         direction.y = 0;
         direction = (direction == Vector3.zero) ? Vector3.forward : direction;
@@ -202,6 +218,30 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         this.sequence = Seq.beforeSecond;
         // frame function update
         this.FrameFunction = ControlFirstShot;
+        this.LateFrameFunction = Nothing;
+        // 
+        this.skillRangeObj.SetActive(false);
+    }
+
+    void ShotSecond()
+    {
+        // check mouse position
+        RaycastHit hitinfo;
+        if (!Physics.Raycast(maincam.ScreenPointToRay(Input.mousePosition), out hitinfo, 200.0f, Constants.groundLayerMask))
+        {
+            // mouse clicked wrong thing
+            return;
+        }
+        // function
+        Vector3 direction = hitinfo.point - projectileTr.position;
+        direction.y = 0;
+        direction = (direction == Vector3.zero) ? Vector3.forward : direction;
+        this.shotDirection = direction.normalized;
+        // state change
+        this.sequence = Seq.secondShotFollowing;
+        // frame function update
+        this.FrameFunction = ControlSecondShot;
+        this.LateFrameFunction = Nothing;
     }
     #endregion
 
@@ -214,6 +254,19 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
     void SkillRangeFollow()
     {
         skillRangeTr.position = masterTr.position;
+
+        RaycastHit hitinfo;
+        if (!Physics.Raycast(maincam.ScreenPointToRay(Input.mousePosition), out hitinfo, 200.0f, Constants.groundLayerMask))
+        {
+            // mouse clicked wrong thing
+            return;
+        }
+
+        Vector3 direction = hitinfo.point - masterTr.position;
+        direction.y = 0;
+        direction = (direction == Vector3.zero) ? Vector3.forward : direction;
+        skillRangeTr.rotation = Quaternion.LookRotation(Vector3.RotateTowards(skillRangeTr.forward,direction,1.0f,0.0f));
+
     }
 
     void ControlFirstShot()
@@ -231,6 +284,49 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         // following
         projectileTr.position += direction.normalized * this.ProjectileVelocity_first * Time.deltaTime;
 
+    }
+
+    void ControlSecondShot()
+    {
+        Vector3 joeyVector = masterTr.position - projectileTr.position;
+        if(Vector3.Dot(joeyVector,this.shotDirection)<=0)
+        {
+            // following end
+            // set variable
+            this.leftDistance = skillRange;
+            // state change
+            this.sequence = Seq.secondShotFollowingEnd;
+            // frame function update
+            this.FrameFunction = ControlShotNotFollowing;
+            this.LateFrameFunction = Nothing;
+            return;
+        }
+
+        projectileTr.position += this.shotDirection * this.ProjectileVelocity_second * Time.deltaTime;
+    }
+
+    void ControlShotNotFollowing()
+    {
+        Vector3 projectileMoving = this.shotDirection * this.ProjectileVelocity_second * Time.deltaTime;
+        if(this.leftDistance <0.01f)
+        {
+            // all Q skill End
+            // state change
+            this.sequence = Seq.notActive;
+            this.state = State.idle;    // have to modify as waiting
+            // frame function update
+            this.FrameFunction = Nothing;
+            this.LateFrameFunction = Nothing;
+            // disable object
+            this.projectileObj.SetActive(false);
+        }
+        if(this.leftDistance < projectileMoving.magnitude)
+        {
+            projectileMoving = this.shotDirection * leftDistance;
+        }
+
+        projectileTr.position += projectileMoving;
+        this.leftDistance -= projectileMoving.magnitude;
     }
     #endregion
 
@@ -265,6 +361,14 @@ public class JoeySkillQ : MonoBehaviour,SkillInterface
         this.FrameFunction = Nothing;
         // function
         skillRangeObj.SetActive(false);
+    }
+    #endregion
+
+    #region Utilfunction
+    
+    void GetDebug()
+    {
+        Debug.Log("Seq = " + this.sequence);
     }
     #endregion
 }
